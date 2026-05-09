@@ -1,11 +1,15 @@
+require('dotenv').config();
 const express = require('express');
 const { messagingApi, middleware } = require('@line/bot-sdk');
+import * as dotenv from 'dotenv';
+dotenv.config();
+
 
 const app = express();
 
 const config = {
-  channelAccessToken: 'C2trWjCsKw+rdCtdYTuOkdTgVoxIZUulpRGXQASWw+fqdhx4cngyTJobfbJo4u4i1+Q8Nm6cov/yXFqqcdrpt+Sk8FkYb0W0+luCTaP2lQYjaQghzMZliqTkCcZFAlzdIZlFqObLUicNTXZg+9AdggdB04t89/1O/w1cDnyilFU=',
-  channelSecret: '6b84a27f3eab0b2cfc840f950d9ffe1c'
+  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
+  channelSecret: process.env.LINE_CHANNEL_SECRET
 };
 
 const client = new messagingApi.MessagingApiClient({
@@ -15,6 +19,8 @@ const client = new messagingApi.MessagingApiClient({
 app.post('/webhook', middleware(config), async (req, res) => {
   // บรรทัดนี้ยังต้องมีไว้เพื่อให้ใช้งานผ่าน ngrok ได้เสถียร
   res.set('ngrok-skip-browser-warning', 'true');
+
+
 
   try {
     const results = await Promise.all(req.body.events.map(handleEvent));
@@ -39,8 +45,12 @@ async function handleEvent(event) {
     }]
   });
 }
+  app.get('/', (req, res) => {
+  res.send('hello world, kaison');
+});
 
-app.listen(5000, () => {
-    console.log('Server running on port 5000');
+
+app.listen(3005, () => {
+    console.log('Server running on port 3005');
 
 });
