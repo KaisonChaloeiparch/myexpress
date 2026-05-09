@@ -1,56 +1,45 @@
+// index.js
 require('dotenv').config();
 const express = require('express');
-const { messagingApi, middleware } = require('@line/bot-sdk');
-import * as dotenv from 'dotenv';
-dotenv.config();
-
+const line = require('@line/bot-sdk');
 
 const app = express();
 
+// ตั้งค่าจาก LINE Developers Console
 const config = {
-  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
-  channelSecret: process.env.LINE_CHANNEL_SECRET
+  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN || "",
+  channelSecret: process.env.LINE_CHANNEL_SECRET || ""
 };
 
-const client = new messagingApi.MessagingApiClient({
-  channelAccessToken: config.channelAccessToken
+app.use('/webhook', line.middleware(config));
+
+// รับ webhook
+app.post('/webhook', (req, res) => {
+  Promise
+    .all(req.body.events.map(handleEvent))
+    .then(result => res.json(result));
 });
 
-app.post('/webhook', middleware(config), async (req, res) => {
-  // บรรทัดนี้ยังต้องมีไว้เพื่อให้ใช้งานผ่าน ngrok ได้เสถียร
-  res.set('ngrok-skip-browser-warning', 'true');
-
-
-
-  try {
-    const results = await Promise.all(req.body.events.map(handleEvent));
-    res.status(200).json(results);
-  } catch (err) {
-    console.error(err);
-    res.status(500).end();
-  }
-});
-
-async function handleEvent(event) {
+// ตอบกลับข้อความ
+function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') {
-    return null;
+    return Promise.resolve(null);
   }
 
-  // บอทจะตอบกลับข้อความที่คุณพิมพ์มา
-  return client.replyMessage({
-    replyToken: event.replyToken,
-    messages: [{
-      type: 'text',
-      text: `สวัสดีครับคุณไกรสร ผมได้รับข้อความว่า: "${event.message.text}" แล้วครับ!`
-    }]
+  return client.replyMessage(event.replyToken, {
+    type: 'text',
+    text: `คุณพิมพ์ว่า: ${event.message.text}`
   });
 }
-  app.get('/', (req, res) => {
+
+const client = new line.messagingApi.MessagingApiClient(config);
+
+// เพิ่ม GET Method
+app.get('/', (req, res) => {
   res.send('hello world, kaison');
 });
 
-
-app.listen(3005, () => {
-    console.log('Server running on port 3005');
-
+const PORT = process.env.PORT || 3005;
+app.listen(PORT, () => {
+  console.log(`Server running at http://localhost:${PORT}`);
 });
