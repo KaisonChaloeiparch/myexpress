@@ -4,6 +4,7 @@ const express = require('express');
 const line = require('@line/bot-sdk');
 
 const app = express();
+const client = new line.messagingApi.MessagingApiClient(config);
 
 // ตั้งค่าจาก LINE Developers Console
 const config = {
@@ -26,13 +27,17 @@ function handleEvent(event) {
     return Promise.resolve(null);
   }
 
-  return client.replyMessage(event.replyToken, {
-    type: 'text',
-    text: `คุณพิมพ์ว่า: ${event.message.text}`
+  // แก้ตรงนี้ครับ
+  return client.replyMessage({
+    replyToken: event.replyToken,
+    messages: [{
+      type: 'text',
+      text: `สวัสดีครับ ยินดีต้อนรับสู่ Cafe ของเรา! คุณพิมพ์ว่า: ${event.message.text} ☕`
+    }]
   });
 }
 
-const client = new line.messagingApi.MessagingApiClient(config);
+
 
 // เพิ่ม GET Method
 app.get('/', (req, res) => {
