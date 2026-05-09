@@ -1,43 +1,54 @@
-// index.js
 require('dotenv').config();
 const express = require('express');
 const line = require('@line/bot-sdk');
 
 const app = express();
 
-// ตั้งค่าจาก LINE Developers Console
+// --- 1. ต้องประกาศ config ก่อน ---
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN || "",
   channelSecret: process.env.LINE_CHANNEL_SECRET || ""
 };
 
+// --- 2. สร้าง client หลังจากมี config แล้ว ---
+const client = new line.messagingApi.MessagingApiClient(config);
+
 app.use('/webhook', line.middleware(config));
 
-// รับ webhook
 app.post('/webhook', (req, res) => {
   Promise
     .all(req.body.events.map(handleEvent))
-    .then(result => res.json(result));
+    .then(result => res.json(result))
+    .catch((err) => {
+      console.error(err);
+      res.status(500).end();
+    });
 });
 
-// ตอบกลับข้อความ
-function handleEvent(event) {
+async function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') {
     return Promise.resolve(null);
   }
 
-  return client.replyMessage(event.replyToken, {
-    type: 'text',
-    text: `คุณพิมพ์ว่า: ${event.message.text}`
+  const msg = event.message.text;
+  let replyText = "";
+
+  // --- 3. แก้ไขข้อความตอบกลับตามเงื่อนไขที่นี่ ---
+  if (msg === "สวัสดี") {
+    replyText = "สวัสดีครับคุณลูกค้า ยินดีต้อนรับสู่ Cafe ของเรา! ☕ รับกาแฟสักแก้วไหมครับ?";
+  } else if (msg === "ราคา") {
+    replyText = "เมนูเริ่มต้นที่ 50 บาทครับผม 💸";
+  } else {
+    replyText = `ได้รับข้อความ "${msg}" แล้วครับ`;
+  }
+
+  return client.replyMessage({
+    replyToken: event.replyToken,
+    messages: [{ type: 'text', text: replyText }]
   });
 }
 
-const client = new line.messagingApi.MessagingApiClient(config);
-
-// เพิ่ม GET Method
-app.get('/', (req, res) => {
-  res.send('hello world, kaison');
-});
+app.get('/', (req, res) => res.send('Server is running!'));
 
 const PORT = process.env.PORT || 3005;
 app.listen(PORT, () => {
