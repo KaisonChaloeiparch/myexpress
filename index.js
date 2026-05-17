@@ -6,21 +6,25 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 const app = express();
 
-// 1. เชื่อมต่อ Supabase (ใส่ค่าตรงๆ จากโปรเจกต์ของคุณ)
+// 1. เชื่อมต่อ Supabase ผ่าน Environment Variables
 const supabase = createClient(
-  "https://byocmtqyseipekobaavw.supabase.co", 
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ5b2NtdHF5c2VpcGVrb2JhYXZ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg5MTA5MDUsImV4cCI6MjA5NDQ4NjkwNX0.IT2OQ5sIXf6KbDQjgNdwKRVAHYfsT9UDuhm69kPp66c"
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
 );
 
-// 2. เริ่มต้น Gemini ด้วยคีย์ตัวล่าสุดที่คุณฝังไว้
+// 2. เริ่มต้น Gemini ด้วยคีย์จาก .env (พร้อมดักจับกรณีลืมตั้งค่า)
+if (!process.env.GEMINI_API_KEY) {
+  console.error("❌ ERROR: กรุณาตั้งค่า GEMINI_API_KEY ในไฟล์ .env");
+  process.exit(1);
+}
 const genAI = new GoogleGenerativeAI({
-  apiKey: "AIzaSyAzsDLR7NWyjFXG83yMeTeTWYKLBZBWjHk"
+  apiKey: process.env.GEMINI_API_KEY.trim()
 });
 
-// 3. ตั้งค่า LINE Config (ใส่ค่าตรงๆ จาก LINE Developers)
+// 3. ตั้งค่า LINE Config
 const config = {
-  channelAccessToken: "C2trWjCsKw+rdCtdYTuOkdTgVoxIZUulpRGXQASWw+fqdhx4cngyTJobfbJo4u4i1+Q8Nm6cov/yXFqqcdrpt+Sk8FkYb0W0+luCTaP2lQYjaQghzMZliqTkCcZFAlzdIZlFqObLUicNTXZg+9AdggdB04t89/1O/w1cDnyilFU=",
-  channelSecret: "6b84a27f3eab0b2cfc840f950d9ffe1c"
+  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
+  channelSecret: process.env.LINE_CHANNEL_SECRET
 };
 
 const client = new line.messagingApi.MessagingApiClient({
@@ -99,7 +103,7 @@ async function handleEvent(event) {
 }
 
 // หน้าแรกเซิร์ฟเวอร์
-app.get('/', (req, res) => res.send('Server is running perfectly!'));
+app.get('/', (req, res) => res.send('Server is running perfectly with Environment Variables!'));
 
 // 6. สั่งให้เซิร์ฟเวอร์เปิด Port รอรับข้อมูล
 const PORT = process.env.PORT || 3005;
