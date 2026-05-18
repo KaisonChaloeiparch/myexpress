@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const line = require('@line/bot-sdk');
 const { createClient } = require("@supabase/supabase-js");
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const { GoogleGenAI } = require("@google/genai");
 
 const app = express();
 
@@ -17,9 +17,54 @@ if (!process.env.GEMINI_API_KEY) {
   console.error("❌ ERROR: กรุณาตั้งค่า GEMINI_API_KEY ในไฟล์ .env");
   process.exit(1);
 }
-const genAI = new GoogleGenerativeAI({
+console.log("GEMINI_API_KEY =", process.env.GEMINI_API_KEY);
+const genAI = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY.trim()
 });
+
+const aiModelCandidates = [
+  "gemini-2.5-flash",
+  "gemini-2.5-pro",
+  "gemini-3-flash-preview",
+];
+
+async function generateAIReply(userMessage) {
+  const maxRetries = 2;
+
+  for (const model of aiModelCandidates) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`AI request: model=${model} attempt=${attempt}`);
+        const result = await genAI.models.generateContent({
+          model,
+          contents: userMessage,
+        });
+
+        if (result?.text) {
+          return result.text;
+        }
+
+        return null;
+      } catch (error) {
+        const status = error?.status || error?.code;
+        console.warn(`AI model ${model} failed (attempt ${attempt}):`, error?.message || error);
+
+        if (status === 503 && attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+          continue;
+        }
+
+        if (status === 503) {
+          break;
+        }
+
+        throw error;
+      }
+    }
+  }
+
+  return null;
+}
 
 // 3. ตั้งค่า LINE Config
 const config = {
@@ -57,11 +102,9 @@ async function handleEvent(event) {
 
   // === ส่วนของ GEMINI ===
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const result = await model.generateContent(userMessage);
-    
-    if (result && result.response) {
-      replyContent = result.response.text();
+    const aiText = await generateAIReply(userMessage);
+    if (aiText) {
+      replyContent = aiText;
     } else {
       replyContent = "บอทไม่ได้รับคำตอบจาก AI";
     }
