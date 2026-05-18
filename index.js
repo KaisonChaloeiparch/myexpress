@@ -9,7 +9,8 @@ const app = express();
 // 1. เชื่อมต่อ Supabase ผ่าน Environment Variables
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
+  //process.env.SUPABASE_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 // 2. เริ่มต้น Gemini ด้วยคีย์จาก .env (พร้อมดักจับกรณีลืมตั้งค่า)
@@ -93,6 +94,10 @@ app.post('/webhook', line.middleware(config), (req, res) => {
 async function handleEvent(event) {
   console.log("ได้รับ Event ใหม่:", event);
 
+  if (event.type === "message" && event.message.type === "image") {
+    return handleImage(event);
+  }
+
   if (event.type !== "message" || event.message.type !== "text") {
     return null;
   }
@@ -144,6 +149,126 @@ async function handleEvent(event) {
     ],
   });
 }
+// 1. สร้าง Blob Client สำหรับดึงข้อมูลไฟล์โดยเฉพาะ (ของ v9+)
+const lineBlobClient = new line.messagingApi.MessagingApiBlobClient({
+  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN || ''
+});
+
+const downloadLineContent = async (messageId) => {
+  const stream = await lineBlobClient.getMessageContent(messageId);
+  const chunks = [];
+ 
+  // รองรับทั้งแบบ Blob (มี arrayBuffer) และแบบ Stream
+  if (stream.arrayBuffer) {
+    const arrayBuffer = await stream.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    return {
+      inlineData: {
+        data: buffer.toString('base64'),
+        mimeType: stream.type || 'image/jpeg'
+      },
+      buffer: buffer
+    };
+  } else {
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+    }
+    const buffer = Buffer.concat(chunks);
+    return {
+      inlineData: {
+        data: buffer.toString('base64'),
+        mimeType: 'image/jpeg'
+      },
+      buffer: buffer
+    };
+  }
+};
+
+async function handleImage(event) {
+  try {
+    const messageId = event.message.id;
+    
+    // ดาวน์โหลดรูปภาพจาก LINE และดึงมาทั้ง Base64 และ Buffer
+    const imageContent = await downloadLineContent(messageId);
+   
+    const fileName = `${messageId}.jpg`;
+
+    // อัปโหลดเข้า Supabase
+    const { data: uploadData, error: uploadError } = await supabase
+      .storage
+      .from('uploads')
+      .upload(`bot-uploads/${fileName}`, imageContent.buffer, {
+        contentType: 'image/jpeg',
+        upsert: true
+      });
+
+    if (uploadError) throw new Error(uploadError.message);
+
+    // ดึง Public URL กลับออกไป
+    const { data: publicUrlData } = supabase
+      .storage
+      .from('uploads')
+      .getPublicUrl(`bot-uploads/${fileName}`);
+
+    const publicUrl = publicUrlData.publicUrl;
+
+    // บันทึกข้อมูลรูปภาพลง Database (ใช้ try-catch แยก)
+    try {
+      const { error: dbError } = await supabase
+        .from("messages")
+        .insert([
+          {
+            user_id: event.source.userId || "",
+            message_id: messageId,
+            type: "image",
+            content: publicUrl,
+            reply_token: event.replyToken || "",
+            reply_content: `อัพโหลดภาพเรียบร้อย: ${publicUrl}`,
+          }
+        ]);
+
+      if (dbError) {
+        console.error("❌ Database error:", dbError.message);
+        console.warn("⚠️ ไม่สามารถบันทึก metadata ลง database ได้ (RLS policy หรือปัญหาอื่น)");
+        console.warn("แนะนำ: ไปที่ Supabase Dashboard > Table Editor > messages > RLS Policies");
+        console.warn("แล้วปิด RLS หรือสร้าง policy ให้ allow insert");
+      }
+    } catch (dbCatchError) {
+      console.error("⚠️ Database connection error:", dbCatchError.message);
+      // ไม่ throw - ให้ส่งข้อความตอบกลับต่อ
+    }
+
+    // ส่งข้อความตอบกลับ LINE
+    return client.replyMessage({
+      replyToken: event.replyToken,
+      messages: [
+        {
+          type: "text",
+          text: `✅ รับภาพแล้ว!\nURL: ${publicUrl}`,
+        },
+      ],
+    });
+
+  } catch (error) {
+    console.error('❌ Error ในการดึงรูปภาพ:', error.message);
+    
+    // ส่งข้อความแจ้งข้อผิดพลาด
+    try {
+      return client.replyMessage({
+        replyToken: event.replyToken,
+        messages: [
+          {
+            type: "text",
+            text: `❌ เกิดข้อผิดพลาด: ${error.message}`,
+          },
+        ],
+      });
+    } catch (replyError) {
+      console.error("Failed to send error message:", replyError.message);
+    }
+  }
+}
+
 
 // หน้าแรกเซิร์ฟเวอร์
 app.get('/', (req, res) => res.send('Server is running perfectly with Environment Variables!'));
